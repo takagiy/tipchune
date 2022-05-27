@@ -123,7 +123,7 @@ impl Blockchain {
 }
 
 /// Side effects caused by the blockchain to other network nodes
-enum Action<'chain> {
+pub enum Action<'chain> {
     /// Do nothing
     None,
     /// Ask to verify the block and add that to the blockchains
