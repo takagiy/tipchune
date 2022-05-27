@@ -90,13 +90,20 @@ impl Blockchain {
         self.trusted_last_block_hash
     }
 
-    fn queue(&mut self, tx: Transaction) -> Result<()> {
+    fn queue(&mut self, tx: Transaction) -> Result<Action> {
         self.queued_tx.push_back(tx);
         if self.queued_tx.len() >= Self::TX_PER_BLOCK {
             let tx = std::mem::take(&mut self.queued_tx);
-            return self.push(Block::new(tx, self.current_hash()));
+            let new_block = Block::new(tx, self.current_hash());
+            let new_block_hash = new_block.hash();
+            return self.push(new_block).and_then(|()| {
+                self.blocks
+                    .get(&new_block_hash)
+                    .ok_or_else(|| err!("hash not found in blocks"))
+                    .map(Action::BroadcastBlock)
+            });
         }
-        Ok(())
+        Ok(Action::None)
     }
 
     fn push(&mut self, block: Block) -> Result<()> {
@@ -113,4 +120,12 @@ impl Blockchain {
         }
         Ok(())
     }
+}
+
+/// Side effects caused by the blockchain to other network nodes
+enum Action<'chain> {
+    /// Do nothing
+    None,
+    /// Ask to verify the block and add that to the blockchains
+    BroadcastBlock(&'chain Block),
 }
