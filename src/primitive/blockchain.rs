@@ -3,6 +3,7 @@ use std::collections::{HashMap, LinkedList};
 
 use super::Address;
 use super::Hash;
+use super::PublicKey;
 use super::Result;
 use crate::err;
 
@@ -29,6 +30,8 @@ pub struct TxOutPtr {
 pub struct TxIn {
     /// Signature to prove that the transaction creator owns `src_output`
     signature: Hash,
+    /// Public key used to verify `signature`
+    public_key: PublicKey,
     /// Transaction output where the input came from.
     src_output: TxOutPtr,
 }
@@ -95,6 +98,8 @@ impl TxIn {
     fn hash(&self) -> Hash {
         let mut hasher = Sha256::new();
         hasher.update(self.signature);
+        // TODO: forward the errors to the caller
+        hasher.update(self.public_key.hash().expect("failed to calculate public key hash"));
         hasher.update(self.src_output.tx_hash);
         hasher.update(self.src_output.output_idx.to_le_bytes());
         hasher.finalize()
@@ -179,7 +184,10 @@ impl Blockchain {
         }
         for tx in &block.transactions {
             for tx_in in &tx.inputs {
-                todo!("implement signature verification")
+                tx_in.public_key.verify(&tx_in.hash(), &tx_in.signature)?;
+                // TODO: ensure that hash of public key matches with the rx address of src_output
+                // TODO: ensure that tx input amount, tx output amount and mining reward are
+                //       balanced
             }
         }
         Ok(())
