@@ -1,5 +1,5 @@
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, LinkedList};
+use std::collections::HashMap;
 
 use super::Address;
 use super::Hash;
@@ -51,7 +51,7 @@ pub struct Block {
     /// The block preceding this block in the blockchain
     parent_hash: Hash,
     /// List of transactions which this block contains
-    transactions: LinkedList<Transaction>,
+    transactions: Vec<Transaction>,
     /// Random number used to adjust the hash of the block
     nonce: u128,
 }
@@ -60,7 +60,7 @@ pub struct Block {
 /// Blockchain is a tree consisting of blocks
 pub struct Blockchain {
     /// Transactions waiting to be wrapped in a block and pushed to the blockchain
-    queued_tx: LinkedList<Transaction>,
+    queued_tx: Vec<Transaction>,
     /// Blocks in the blockchain
     blocks: HashMap<Hash, Block>,
     /// Height of the blocks in the tree
@@ -99,7 +99,11 @@ impl TxIn {
         let mut hasher = Sha256::new();
         hasher.update(self.signature);
         // TODO: forward the errors to the caller
-        hasher.update(self.public_key.hash().expect("failed to calculate public key hash"));
+        hasher.update(
+            self.public_key
+                .hash()
+                .expect("failed to calculate public key hash"),
+        );
         hasher.update(self.src_output.tx_hash);
         hasher.update(self.src_output.output_idx.to_le_bytes());
         hasher.finalize()
@@ -120,7 +124,7 @@ impl Transaction {
 }
 
 impl Block {
-    fn new(tx: LinkedList<Transaction>, parent_hash: Hash) -> Self {
+    fn new(tx: Vec<Transaction>, parent_hash: Hash) -> Self {
         Self {
             transactions: tx,
             parent_hash,
@@ -147,9 +151,12 @@ impl Blockchain {
     }
 
     fn queue(&mut self, tx: Transaction) -> Result<Action> {
-        self.queued_tx.push_back(tx);
+        self.queued_tx.push(tx);
         if self.queued_tx.len() >= Self::TX_PER_BLOCK {
-            let tx = std::mem::take(&mut self.queued_tx);
+            let tx = std::mem::replace(
+                &mut self.queued_tx,
+                Vec::with_capacity(Blockchain::TX_PER_BLOCK),
+            );
             let new_block = Block::new(tx, self.current_hash());
             let new_block_hash = new_block.hash();
             return self.push(new_block).and_then(|()| {
