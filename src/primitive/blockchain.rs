@@ -172,10 +172,12 @@ impl Blockchain {
     fn push(&mut self, block: Block) -> Result<()> {
         self.verify(&block)?;
         let hash = block.hash();
-        let height = 1 + self
+        let height = self
             .blocks_height
             .get(&block.parent_hash)
-            .ok_or_else(|| err!("hash not found in blocks_height"))?;
+            .ok_or_else(|| err!("hash not found in blocks_height"))?
+            .checked_add(1)
+            .ok_or_else(|| err!("block height overflowed"))?;
         self.blocks_height.insert(hash, height);
         self.blocks.insert(hash, block);
         if height > self.trusted_height {
