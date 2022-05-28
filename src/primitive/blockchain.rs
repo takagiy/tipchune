@@ -126,7 +126,7 @@ impl Block {
         let mut hasher = Sha256::new();
         hasher.update(self.parent_hash);
         for tx in &self.transactions {
-            //hasher.update(tx.hash());
+            hasher.update(tx.hash());
         }
         hasher.update(self.nonce.to_le_bytes());
         hasher.finalize()
