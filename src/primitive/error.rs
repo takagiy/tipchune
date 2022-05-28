@@ -10,7 +10,7 @@ pub type Result<T> = std::result::Result<T, PrimitiveError>;
 
 #[macro_export]
 macro_rules! err {
-    ($e:expr) => {
-        crate::primitive::PrimitiveError::Uncertain($e.to_owned())
+    ($($e:expr),+) => {
+        crate::primitive::PrimitiveError::Uncertain(format!($($e),+))
     };
 }
