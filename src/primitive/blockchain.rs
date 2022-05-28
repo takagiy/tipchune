@@ -200,6 +200,9 @@ impl Blockchain {
             .ok_or_else(|| err!("block height overflowed"))?;
         self.blocks_height.insert(hash, height);
         self.blocks.insert(hash, block.desc);
+        for tx in &block.body.transactions {
+            self.transactions.insert(tx.hash(), tx.clone());
+        }
         if height > self.trusted_height {
             self.trusted_height = height;
             self.trusted_last_block_hash = hash;
