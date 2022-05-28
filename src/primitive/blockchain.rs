@@ -1,5 +1,6 @@
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use super::Address;
 use super::Hash;
@@ -45,15 +46,29 @@ pub struct Transaction {
     outputs: Vec<TxOut>,
 }
 
+#[derive(Debug, Clone)]
+/// Addtional data attached to blocks
+pub struct BlockDesc {
+    /// The block preceding this block in the blockchain
+    parent_hash: Hash,
+    /// Random number used to adjust the hash of the block
+    nonce: u128,
+}
+
+#[derive(Debug)]
+/// Transactions contained in a block
+pub struct BlockBody {
+    /// List of transactions contained in a block
+    transactions: Vec<Transaction>,
+}
+
 #[derive(Debug)]
 /// Block consists of some transactions
 pub struct Block {
-    /// The block preceding this block in the blockchain
-    parent_hash: Hash,
-    /// List of transactions which this block contains
-    transactions: Vec<Transaction>,
-    /// Random number used to adjust the hash of the block
-    nonce: u128,
+    /// Addtional data attached to the block
+    desc: BlockDesc,
+    /// Transactions contained in the block
+    body: BlockBody,
 }
 
 #[derive(Debug)]
@@ -61,8 +76,10 @@ pub struct Block {
 pub struct Blockchain {
     /// Transactions waiting to be wrapped in a block and pushed to the blockchain
     queued_tx: Vec<Transaction>,
+    /// Transactions in the blockchain
+    transactions: HashMap<Hash, Transaction>,
     /// Blocks in the blockchain
-    blocks: HashMap<Hash, Block>,
+    blocks: HashMap<Hash, BlockDesc>,
     /// Height of the blocks in the tree
     blocks_height: HashMap<Hash, u128>,
     /// Height of the highest block in the tree
@@ -126,19 +143,25 @@ impl Transaction {
 impl Block {
     fn new(tx: Vec<Transaction>, parent_hash: Hash) -> Self {
         Self {
-            transactions: tx,
-            parent_hash,
-            nonce: 0,
+            body: BlockBody { transactions: tx },
+            desc: BlockDesc {
+                parent_hash,
+                nonce: 0,
+            },
         }
+    }
+
+    fn from_part(body: BlockBody, desc: BlockDesc) -> Self {
+        Self { body, desc }
     }
 
     fn hash(&self) -> Hash {
         let mut hasher = Sha256::new();
-        hasher.update(self.parent_hash);
-        for tx in &self.transactions {
+        hasher.update(self.desc.parent_hash);
+        for tx in &self.body.transactions {
             hasher.update(tx.hash());
         }
-        hasher.update(self.nonce.to_le_bytes());
+        hasher.update(self.desc.nonce.to_le_bytes());
         hasher.finalize()
     }
 }
@@ -158,40 +181,37 @@ impl Blockchain {
                 Vec::with_capacity(Blockchain::TX_PER_BLOCK),
             );
             let new_block = Block::new(tx, self.current_hash());
-            let new_block_hash = new_block.hash();
-            return self.push(new_block).and_then(|()| {
-                self.blocks
-                    .get(&new_block_hash)
-                    .ok_or_else(|| err!("hash not found in blocks"))
-                    .map(Action::BroadcastBlock)
-            });
+            let desc = new_block.desc.clone();
+            return self
+                .push(new_block)
+                .map(|body| Action::BroadcastBlock(Block::from_part(body, desc)));
         }
         Ok(Action::None)
     }
 
-    fn push(&mut self, block: Block) -> Result<()> {
+    fn push(&mut self, block: Block) -> Result<BlockBody> {
         self.verify(&block)?;
         let hash = block.hash();
         let height = self
             .blocks_height
-            .get(&block.parent_hash)
+            .get(&block.desc.parent_hash)
             .ok_or_else(|| err!("hash not found in blocks_height"))?
             .checked_add(1)
             .ok_or_else(|| err!("block height overflowed"))?;
         self.blocks_height.insert(hash, height);
-        self.blocks.insert(hash, block);
+        self.blocks.insert(hash, block.desc);
         if height > self.trusted_height {
             self.trusted_height = height;
             self.trusted_last_block_hash = hash;
         }
-        Ok(())
+        Ok(block.body)
     }
 
     fn verify(&self, block: &Block) -> Result<()> {
         if !block.hash().pow_verified(self.pow_difficulty) {
             return Err(err!("Received block does not meets difficulty of PoW"));
         }
-        for tx in &block.transactions {
+        for tx in &block.body.transactions {
             for tx_in in &tx.inputs {
                 tx_in.public_key.verify(&tx_in.hash(), &tx_in.signature)?;
                 // TODO: ensure that hash of public key matches with the rx address of src_output
@@ -204,11 +224,11 @@ impl Blockchain {
 }
 
 /// Side effects caused by the blockchain to other network nodes
-pub enum Action<'chain> {
+pub enum Action {
     /// Do nothing
     None,
     /// Ask to verify the block and add that to the blockchains
-    BroadcastBlock(&'chain Block),
+    BroadcastBlock(Block),
 }
 
 #[test]
