@@ -29,6 +29,7 @@ pub struct PublicKey(RsaPublicKey);
 /// Private key used to sign transaction input
 pub struct PrivateKey(RsaPrivateKey);
 
+// FIXME: "failed to sign by private key: invalid padding scheme"
 const DEFAULT_PADDING_SCHEME: PaddingScheme = PaddingScheme::PKCS1v15Encrypt;
 
 impl PublicKey {
@@ -65,9 +66,25 @@ impl PrivateKey {
         &self.0
     }
 
+    pub fn to_public_key(&self) -> PublicKey {
+        PublicKey::new(RsaPublicKey::from(self.inner()))
+    }
+
     pub fn sign(&self, hash: &Hash) -> Result<Vec<u8>> {
         self.inner()
             .sign(DEFAULT_PADDING_SCHEME, hash)
             .map_err(|e| err!("failed to sign by private key: {}", e))
     }
+}
+
+#[test]
+fn key_auth_sign_and_verify() {
+    use rand;
+    let mut rng = rand::thread_rng();
+    let private_key = PrivateKey::new(RsaPrivateKey::new(&mut rng, 2048).expect("failed to create private_key"));
+    let public_key = private_key.to_public_key();
+
+    let hash = Hash::from_slice(&[42; 32]);
+    let signed = private_key.sign(hash).expect("failed to sign the hash");
+    assert_eq!(Ok(()), public_key.verify(hash, &signed));
 }

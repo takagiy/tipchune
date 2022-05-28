@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum PrimitiveError {
     #[error("{}", 0)]
     Uncertain(String),
