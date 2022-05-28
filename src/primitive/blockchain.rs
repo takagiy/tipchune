@@ -1,6 +1,7 @@
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, LinkedList};
 
+use super::Address;
 use super::Hash;
 use super::Result;
 use crate::err;
@@ -9,7 +10,7 @@ use crate::err;
 /// Output of transaction
 pub struct TxOut {
     /// Address of the account of the receiver
-    rx_addr: Hash,
+    rx_addr: Address,
     /// Value to be transferred
     amount: usize,
 }
@@ -84,7 +85,7 @@ impl VerifyPow for Hash {
 impl TxOut {
     fn hash(&self) -> Hash {
         let mut hasher = Sha256::new();
-        hasher.update(self.rx_addr);
+        hasher.update(self.rx_addr.as_hash());
         hasher.update(self.amount.to_le_bytes());
         hasher.finalize()
     }

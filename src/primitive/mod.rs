@@ -1,7 +1,7 @@
 mod blockchain;
+mod crypto;
 mod error;
-mod hash;
 
 pub use blockchain::*;
+pub use crypto::*;
 pub use error::*;
-pub use hash::*;
