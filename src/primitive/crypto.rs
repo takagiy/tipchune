@@ -87,4 +87,7 @@ fn key_auth_sign_and_verify() {
     let hash = Hash::from_slice(&[42; 32]);
     let signed = private_key.sign(hash).expect("failed to sign the hash");
     assert_eq!(Ok(()), public_key.verify(hash, &signed));
+    let other_hash = Hash::from_slice(&[10; 32]);
+    let fake_sign = private_key.sign(other_hash).expect("failed to sign the fake hash");
+    assert_ne!(Ok(()), public_key.verify(hash, &fake_sign));
 }
