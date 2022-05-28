@@ -211,10 +211,30 @@ impl Blockchain {
         if !block.hash().pow_verified(self.pow_difficulty) {
             return Err(err!("Received block does not meets difficulty of PoW"));
         }
+        let tx_in_block: HashMap<Hash, &Transaction> = block
+            .body
+            .transactions
+            .iter()
+            .map(|tx| (tx.hash(), tx))
+            .collect();
         for tx in &block.body.transactions {
             for tx_in in &tx.inputs {
                 tx_in.public_key.verify(&tx_in.hash(), &tx_in.signature)?;
-                // TODO: ensure that hash of public key matches with the rx address of src_output
+                let source_tx = tx_in_block
+                    .get(&tx_in.src_output.tx_hash)
+                    .copied()
+                    .or_else(|| self.transactions.get(&tx_in.src_output.tx_hash))
+                    .ok_or_else(|| {
+                        err!("transaction output referred in transaction input does not found")
+                    })?;
+                let source_tx_output = &source_tx.outputs[tx_in.src_output.output_idx];
+
+                // Ensure that hash of public key matches with the rx address of src_output
+                if &tx_in.public_key.hash()? != source_tx_output.rx_addr.as_hash() {
+                    return Err(err!(
+                        "public key of input does not match with address of output"
+                    ));
+                }
                 // TODO: ensure that tx input amount, tx output amount and mining reward are
                 //       balanced
             }
