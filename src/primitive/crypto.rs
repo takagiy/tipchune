@@ -81,13 +81,16 @@ impl PrivateKey {
 fn key_auth_sign_and_verify() {
     use rand;
     let mut rng = rand::thread_rng();
-    let private_key = PrivateKey::new(RsaPrivateKey::new(&mut rng, 2048).expect("failed to create private_key"));
+    let private_key =
+        PrivateKey::new(RsaPrivateKey::new(&mut rng, 2048).expect("failed to create private_key"));
     let public_key = private_key.to_public_key();
 
     let hash = Hash::from_slice(&[42; 32]);
     let signed = private_key.sign(hash).expect("failed to sign the hash");
     assert_eq!(Ok(()), public_key.verify(hash, &signed));
     let other_hash = Hash::from_slice(&[10; 32]);
-    let fake_sign = private_key.sign(other_hash).expect("failed to sign the fake hash");
+    let fake_sign = private_key
+        .sign(other_hash)
+        .expect("failed to sign the fake hash");
     assert_ne!(Ok(()), public_key.verify(hash, &fake_sign));
 }
