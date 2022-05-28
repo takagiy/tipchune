@@ -65,6 +65,19 @@ pub struct Blockchain {
     trusted_height: u128,
     /// Hash of the highest block in the tree
     trusted_last_block_hash: Hash,
+    /// Difficulty of Proof-of-Work (number of preceding bits which must be zero)
+    pow_difficulty: usize,
+}
+
+trait VerifyPow {
+    fn pow_verified(&self, difficulty: usize) -> bool;
+}
+
+impl VerifyPow for Hash {
+    fn pow_verified(&self, difficulty: usize) -> bool {
+        assert!(difficulty <= 8);
+        self[0] & (0b1111_1111_u8 >> difficulty) == 0
+    }
 }
 
 // TODO: Implment auto derive for hash()
@@ -144,6 +157,7 @@ impl Blockchain {
     }
 
     fn push(&mut self, block: Block) -> Result<()> {
+        self.verify(&block)?;
         let hash = block.hash();
         let height = 1 + self
             .blocks_height
@@ -154,6 +168,18 @@ impl Blockchain {
         if height > self.trusted_height {
             self.trusted_height = height;
             self.trusted_last_block_hash = hash;
+        }
+        Ok(())
+    }
+
+    fn verify(&self, block: &Block) -> Result<()> {
+        if !block.hash().pow_verified(self.pow_difficulty) {
+            return Err(err!("Received block does not meets difficulty of PoW"));
+        }
+        for tx in &block.transactions {
+            for tx_in in &tx.inputs {
+                todo!("implement signature verification")
+            }
         }
         Ok(())
     }
