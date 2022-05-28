@@ -29,8 +29,8 @@ pub struct PublicKey(RsaPublicKey);
 /// Private key used to sign transaction input
 pub struct PrivateKey(RsaPrivateKey);
 
-// FIXME: "failed to sign by private key: invalid padding scheme"
-const DEFAULT_PADDING_SCHEME: PaddingScheme = PaddingScheme::PKCS1v15Encrypt;
+// TODO: google about padding scheme for signatures
+const DEFAULT_PADDING_SCHEME: PaddingScheme = PaddingScheme::PKCS1v15Sign { hash: None };
 
 impl PublicKey {
     pub fn new(inner: RsaPublicKey) -> Self {
