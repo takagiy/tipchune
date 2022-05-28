@@ -76,7 +76,7 @@ trait VerifyPow {
 impl VerifyPow for Hash {
     fn pow_verified(&self, difficulty: usize) -> bool {
         assert!(difficulty <= 8);
-        self[0] & (0b1111_1111_u8 >> difficulty) == 0
+        self[0] & !(0b1111_1111_u8 >> difficulty) == 0
     }
 }
 
@@ -191,4 +191,47 @@ pub enum Action<'chain> {
     None,
     /// Ask to verify the block and add that to the blockchains
     BroadcastBlock(&'chain Block),
+}
+
+#[test]
+fn test_hash_pow_verify() {
+    let hash_difficulty3 = Hash::from_slice(&[
+        0b0001_1010_u8,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+    ]);
+    assert!(hash_difficulty3.pow_verified(0));
+    assert!(hash_difficulty3.pow_verified(1));
+    assert!(hash_difficulty3.pow_verified(2));
+    assert!(hash_difficulty3.pow_verified(3));
+    assert!(!hash_difficulty3.pow_verified(4));
 }
