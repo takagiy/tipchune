@@ -67,6 +67,39 @@ pub struct Blockchain {
     trusted_last_block_hash: Hash,
 }
 
+// TODO: Implment auto derive for hash()
+impl TxOut {
+    fn hash(&self) -> Hash {
+        let mut hasher = Sha256::new();
+        hasher.update(self.rx_addr);
+        hasher.update(self.amount.to_le_bytes());
+        hasher.finalize()
+    }
+}
+
+impl TxIn {
+    fn hash(&self) -> Hash {
+        let mut hasher = Sha256::new();
+        hasher.update(self.signature);
+        hasher.update(self.src_output.tx_hash);
+        hasher.update(self.src_output.output_idx.to_le_bytes());
+        hasher.finalize()
+    }
+}
+
+impl Transaction {
+    fn hash(&self) -> Hash {
+        let mut hasher = Sha256::new();
+        for tx_in in &self.inputs {
+            hasher.update(tx_in.hash());
+        }
+        for tx_out in &self.outputs {
+            hasher.update(tx_out.hash());
+        }
+        hasher.finalize()
+    }
+}
+
 impl Block {
     fn new(tx: LinkedList<Transaction>, parent_hash: Hash) -> Self {
         Self {
@@ -78,7 +111,11 @@ impl Block {
 
     fn hash(&self) -> Hash {
         let mut hasher = Sha256::new();
-        todo!("implement hash for block");
+        hasher.update(self.parent_hash);
+        for tx in &self.transactions {
+            //hasher.update(tx.hash());
+        }
+        hasher.update(self.nonce.to_le_bytes());
         hasher.finalize()
     }
 }
