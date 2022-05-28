@@ -164,6 +164,10 @@ impl Block {
         hasher.update(self.desc.nonce.to_le_bytes());
         hasher.finalize()
     }
+
+    fn base_transaction(&self) -> &Transaction {
+        &self.body.transactions[0]
+    }
 }
 
 impl Blockchain {
@@ -220,7 +224,9 @@ impl Blockchain {
             .iter()
             .map(|tx| (tx.hash(), tx))
             .collect();
-        for tx in &block.body.transactions {
+        let mut total_lost_amount = 0isize;
+        for (i, tx) in block.body.transactions.iter().enumerate() {
+            let mut total_input_amount = 0;
             for tx_in in &tx.inputs {
                 tx_in.public_key.verify(&tx_in.hash(), &tx_in.signature)?;
                 let source_tx = tx_in_block
@@ -238,10 +244,31 @@ impl Blockchain {
                         "public key of input does not match with address of output"
                     ));
                 }
-                // TODO: ensure that tx input amount, tx output amount and mining reward are
-                //       balanced
+
+                total_input_amount += source_tx_output.amount;
             }
+            let total_output_amount: usize = tx.outputs.iter().map(|output| output.amount).sum();
+            // Transaction excepting for the base transaction cannot generate new amount
+            if i != 0 && total_output_amount > total_input_amount {
+                return Err(err!(
+                    "output amount of transaction exceeded input amount of transaction"
+                ));
+            }
+            total_lost_amount += total_input_amount as isize;
+            total_lost_amount -= total_output_amount as isize;
         }
+        if block.base_transaction().inputs.len() != 0 || block.base_transaction().outputs.len() != 1
+        {
+            return Err(err!(
+                "number of inputs and outputs of base transaction is incorrect"
+            ));
+        }
+        if total_lost_amount != 0 {
+            return Err(err!(
+                "input and output amount of transactions are not balanced"
+            ));
+        }
+
         Ok(())
     }
 }
