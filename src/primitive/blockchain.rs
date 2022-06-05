@@ -11,7 +11,7 @@ use crate::err;
 /// Output of transaction
 pub struct TxOut {
     /// Address of the account of the receiver
-    rx_addr: Address,
+    receiver_address: Address,
     /// Value to be transferred
     amount: usize,
 }
@@ -20,9 +20,9 @@ pub struct TxOut {
 /// Reference to point a transaction output from a transaction input
 pub struct TxOutPtr {
     /// Hash of the transaction holding the output
-    tx_hash: Hash,
+    transaction_hash: Hash,
     /// Index of the output in the list of outputs of the transaction
-    output_idx: usize,
+    index: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -33,7 +33,7 @@ pub struct TxIn {
     /// Public key used to verify `signature`
     public_key: PublicKey,
     /// Transaction output where the input came from.
-    src_output: TxOutPtr,
+    source_output: TxOutPtr,
 }
 
 #[derive(Debug, Clone)]
@@ -74,17 +74,17 @@ pub struct Block {
 /// Blockchain is a tree consisting of blocks
 pub struct Blockchain {
     /// Transactions waiting to be wrapped in a block and pushed to the blockchain
-    queued_tx: Vec<Transaction>,
+    queued_transactions: Vec<Transaction>,
     /// Transactions in the blockchain
     transactions: HashMap<Hash, Transaction>,
     /// Blocks in the blockchain
     blocks: HashMap<Hash, BlockDesc>,
     /// Height of the blocks in the tree
-    blocks_height: HashMap<Hash, u128>,
+    block_heights: HashMap<Hash, u128>,
     /// Height of the highest block in the tree
-    trusted_height: u128,
+    max_height: u128,
     /// Hash of the highest block in the tree
-    trusted_last_block_hash: Hash,
+    max_height_block_hash: Hash,
     /// Difficulty of Proof-of-Work (number of preceding bits which must be zero)
     pow_difficulty: usize,
 }
@@ -104,7 +104,7 @@ impl VerifyPow for Hash {
 impl TxOut {
     fn hash(&self) -> Hash {
         let mut hasher = Sha256::new();
-        hasher.update(self.rx_addr.as_hash());
+        hasher.update(self.receiver_address.as_hash());
         hasher.update(self.amount.to_le_bytes());
         hasher.finalize()
     }
@@ -120,8 +120,8 @@ impl TxIn {
                 .hash()
                 .expect("failed to calculate public key hash"),
         );
-        hasher.update(self.src_output.tx_hash);
-        hasher.update(self.src_output.output_idx.to_le_bytes());
+        hasher.update(self.source_output.transaction_hash);
+        hasher.update(self.source_output.index.to_le_bytes());
         hasher.finalize()
     }
 
@@ -131,31 +131,31 @@ impl TxIn {
         chain_transactions: &'local HashMap<Hash, Transaction>,
     ) -> Result<&'local TxOut> {
         local_transactions
-            .get(&self.src_output.tx_hash)
+            .get(&self.source_output.transaction_hash)
             .copied()
-            .or_else(|| chain_transactions.get(&self.src_output.tx_hash))
+            .or_else(|| chain_transactions.get(&self.source_output.transaction_hash))
             .ok_or_else(|| err!("transaction output referred in transaction input does not found"))
-            .map(|transaction| &transaction.outputs[self.src_output.output_idx])
+            .map(|transaction| &transaction.outputs[self.source_output.index])
     }
 }
 
 impl Transaction {
     fn hash(&self) -> Hash {
         let mut hasher = Sha256::new();
-        for tx_in in &self.inputs {
-            hasher.update(tx_in.hash());
+        for input in &self.inputs {
+            hasher.update(input.hash());
         }
-        for tx_out in &self.outputs {
-            hasher.update(tx_out.hash());
+        for output in &self.outputs {
+            hasher.update(output.hash());
         }
         hasher.finalize()
     }
 }
 
 impl Block {
-    fn new(tx: Vec<Transaction>, parent_hash: Hash) -> Self {
+    fn new(transactions: Vec<Transaction>, parent_hash: Hash) -> Self {
         Self {
-            body: BlockBody { transactions: tx },
+            body: BlockBody { transactions },
             desc: BlockDesc {
                 parent_hash,
                 nonce: 0,
@@ -170,8 +170,8 @@ impl Block {
     fn hash(&self) -> Hash {
         let mut hasher = Sha256::new();
         hasher.update(self.desc.parent_hash);
-        for tx in &self.body.transactions {
-            hasher.update(tx.hash());
+        for transaction in &self.body.transactions {
+            hasher.update(transaction.hash());
         }
         hasher.update(self.desc.nonce.to_le_bytes());
         hasher.finalize()
@@ -186,17 +186,17 @@ impl Blockchain {
     const TX_PER_BLOCK: usize = 16;
 
     fn current_hash(&self) -> Hash {
-        self.trusted_last_block_hash
+        self.max_height_block_hash
     }
 
-    fn queue(&mut self, tx: Transaction) -> Result<Action> {
-        self.queued_tx.push(tx);
-        if self.queued_tx.len() >= Self::TX_PER_BLOCK {
-            let tx = std::mem::replace(
-                &mut self.queued_tx,
+    fn queue(&mut self, transaction: Transaction) -> Result<Action> {
+        self.queued_transactions.push(transaction);
+        if self.queued_transactions.len() >= Self::TX_PER_BLOCK {
+            let transactions = std::mem::replace(
+                &mut self.queued_transactions,
                 Vec::with_capacity(Blockchain::TX_PER_BLOCK),
             );
-            let new_block = Block::new(tx, self.current_hash());
+            let new_block = Block::new(transactions, self.current_hash());
             let desc = new_block.desc.clone();
             return self
                 .push(new_block)
@@ -209,19 +209,20 @@ impl Blockchain {
         self.verify(&block)?;
         let hash = block.hash();
         let height = self
-            .blocks_height
+            .block_heights
             .get(&block.desc.parent_hash)
             .ok_or_else(|| err!("hash not found in blocks_height"))?
             .checked_add(1)
             .ok_or_else(|| err!("block height overflowed"))?;
-        self.blocks_height.insert(hash, height);
+        self.block_heights.insert(hash, height);
         self.blocks.insert(hash, block.desc);
-        for tx in &block.body.transactions {
-            self.transactions.insert(tx.hash(), tx.clone());
+        for transaction in &block.body.transactions {
+            self.transactions
+                .insert(transaction.hash(), transaction.clone());
         }
-        if height > self.trusted_height {
-            self.trusted_height = height;
-            self.trusted_last_block_hash = hash;
+        if height > self.max_height {
+            self.max_height = height;
+            self.max_height_block_hash = hash;
         }
         Ok(block.body)
     }
@@ -234,36 +235,39 @@ impl Blockchain {
             .body
             .transactions
             .iter()
-            .map(|tx| (tx.hash(), tx))
+            .map(|transaction| (transaction.hash(), transaction))
             .collect();
 
-        let mut total_lost_amount = 0isize;
-        for (i, tx) in block.body.transactions.iter().enumerate() {
-            let mut total_input_amount = 0;
-            for tx_in in &tx.inputs {
-                let source_output =
-                    tx_in.find_source(&transactions_in_block, &self.transactions)?;
+        let mut block_input_amount = 0;
+        let mut block_output_amount = 0;
 
-                // Ensure that hash of public key matches with the rx address of src_output
-                if &tx_in.public_key.hash()? != source_output.rx_addr.as_hash() {
-                    return Err(err!(
-                        "public key of input does not match with address of output"
-                    ));
-                }
+        for (i, transaction) in block.body.transactions.iter().enumerate() {
+            let transaction_input_amount: usize =
+                transaction.inputs.iter().try_fold(0, |sum, input| {
+                    let input_source =
+                        input.find_source(&transactions_in_block, &self.transactions)?;
 
-                tx_in.public_key.verify(&tx_in.hash(), &tx_in.signature)?;
+                    // Ensure that hash of public key matches with the receiver address of input_source
+                    if &input.public_key.hash()? != input_source.receiver_address.as_hash() {
+                        return Err(err!(
+                            "public key of input does not match with address of output"
+                        ));
+                    }
 
-                total_input_amount += source_output.amount;
-            }
-            let total_output_amount: usize = tx.outputs.iter().map(|output| output.amount).sum();
+                    input.public_key.verify(&input.hash(), &input.signature)?;
+                    Ok(sum + input_source.amount)
+                })?;
+            let transaction_output_amount: usize =
+                transaction.outputs.iter().map(|output| output.amount).sum();
+
             // Transaction excepting for the base transaction cannot generate new amount
-            if i != 0 && total_output_amount > total_input_amount {
+            if i != 0 && transaction_output_amount > transaction_input_amount {
                 return Err(err!(
                     "output amount of transaction exceeded input amount of transaction"
                 ));
             }
-            total_lost_amount += total_input_amount as isize;
-            total_lost_amount -= total_output_amount as isize;
+            block_input_amount += transaction_input_amount;
+            block_output_amount += transaction_output_amount;
         }
         if !block.base_transaction().inputs.is_empty()
             || block.base_transaction().outputs.len() != 1
@@ -272,7 +276,7 @@ impl Blockchain {
                 "number of inputs and outputs of base transaction is incorrect"
             ));
         }
-        if total_lost_amount != 0 {
+        if block_input_amount != block_output_amount {
             return Err(err!(
                 "input and output amount of transactions are not balanced"
             ));
