@@ -124,6 +124,19 @@ impl TxIn {
         hasher.update(self.src_output.output_idx.to_le_bytes());
         hasher.finalize()
     }
+
+    fn find_source<'local>(
+        &self,
+        local_transactions: &HashMap<Hash, &'local Transaction>,
+        chain_transactions: &'local HashMap<Hash, Transaction>,
+    ) -> Result<&'local TxOut> {
+        local_transactions
+            .get(&self.src_output.tx_hash)
+            .copied()
+            .or_else(|| chain_transactions.get(&self.src_output.tx_hash))
+            .ok_or_else(|| err!("transaction output referred in transaction input does not found"))
+            .map(|transaction| &transaction.outputs[self.src_output.output_idx])
+    }
 }
 
 impl Transaction {
@@ -217,34 +230,30 @@ impl Blockchain {
         if !block.hash().pow_verified(self.pow_difficulty) {
             return Err(err!("Received block does not meets difficulty of PoW"));
         }
-        let tx_in_block: HashMap<Hash, &Transaction> = block
+        let transactions_in_block: HashMap<Hash, &Transaction> = block
             .body
             .transactions
             .iter()
             .map(|tx| (tx.hash(), tx))
             .collect();
+
         let mut total_lost_amount = 0isize;
         for (i, tx) in block.body.transactions.iter().enumerate() {
             let mut total_input_amount = 0;
             for tx_in in &tx.inputs {
-                tx_in.public_key.verify(&tx_in.hash(), &tx_in.signature)?;
-                let source_tx = tx_in_block
-                    .get(&tx_in.src_output.tx_hash)
-                    .copied()
-                    .or_else(|| self.transactions.get(&tx_in.src_output.tx_hash))
-                    .ok_or_else(|| {
-                        err!("transaction output referred in transaction input does not found")
-                    })?;
-                let source_tx_output = &source_tx.outputs[tx_in.src_output.output_idx];
+                let source_output =
+                    tx_in.find_source(&transactions_in_block, &self.transactions)?;
 
                 // Ensure that hash of public key matches with the rx address of src_output
-                if &tx_in.public_key.hash()? != source_tx_output.rx_addr.as_hash() {
+                if &tx_in.public_key.hash()? != source_output.rx_addr.as_hash() {
                     return Err(err!(
                         "public key of input does not match with address of output"
                     ));
                 }
 
-                total_input_amount += source_tx_output.amount;
+                tx_in.public_key.verify(&tx_in.hash(), &tx_in.signature)?;
+
+                total_input_amount += source_output.amount;
             }
             let total_output_amount: usize = tx.outputs.iter().map(|output| output.amount).sum();
             // Transaction excepting for the base transaction cannot generate new amount
@@ -256,7 +265,8 @@ impl Blockchain {
             total_lost_amount += total_input_amount as isize;
             total_lost_amount -= total_output_amount as isize;
         }
-        if block.base_transaction().inputs.len() != 0 || block.base_transaction().outputs.len() != 1
+        if !block.base_transaction().inputs.is_empty()
+            || block.base_transaction().outputs.len() != 1
         {
             return Err(err!(
                 "number of inputs and outputs of base transaction is incorrect"
