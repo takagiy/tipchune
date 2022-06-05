@@ -269,6 +269,12 @@ impl Blockchain {
             block_input_amount += transaction_input_amount;
             block_output_amount += transaction_output_amount;
         }
+        if block_input_amount != block_output_amount {
+            return Err(err!(
+                "input and output amount of transactions are not balanced"
+            ));
+        }
+
         if !block.base_transaction().inputs.is_empty()
             || block.base_transaction().outputs.len() != 1
         {
@@ -276,12 +282,6 @@ impl Blockchain {
                 "number of inputs and outputs of base transaction is incorrect"
             ));
         }
-        if block_input_amount != block_output_amount {
-            return Err(err!(
-                "input and output amount of transactions are not balanced"
-            ));
-        }
-
         Ok(())
     }
 }
