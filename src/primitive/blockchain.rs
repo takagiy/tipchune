@@ -73,8 +73,6 @@ pub struct Block {
 #[derive(Debug)]
 /// Blockchain is a tree consisting of blocks
 pub struct Blockchain {
-    /// Transactions waiting to be wrapped in a block and pushed to the blockchain
-    queued_transactions: Vec<Transaction>,
     /// Transactions in the blockchain
     transactions: HashMap<Hash, Transaction>,
     /// Blocks in the blockchain
@@ -187,22 +185,6 @@ impl Blockchain {
 
     fn current_hash(&self) -> Hash {
         self.max_height_block_hash
-    }
-
-    fn queue(&mut self, transaction: Transaction) -> Result<Action> {
-        self.queued_transactions.push(transaction);
-        if self.queued_transactions.len() >= Self::TX_PER_BLOCK {
-            let transactions = std::mem::replace(
-                &mut self.queued_transactions,
-                Vec::with_capacity(Blockchain::TX_PER_BLOCK),
-            );
-            let new_block = Block::new(transactions, self.current_hash());
-            let desc = new_block.desc.clone();
-            return self
-                .push(new_block)
-                .map(|body| Action::BroadcastBlock(Block::from_part(body, desc)));
-        }
-        Ok(Action::None)
     }
 
     fn push(&mut self, block: Block) -> Result<BlockBody> {
