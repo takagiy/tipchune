@@ -31,7 +31,7 @@ pub struct Join {
 impl Handler<Join> for WsConnectionManager {
     type Result = <Join as Message>::Result;
 
-    fn handle(&mut self, msg: Join, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: Join, _ctx: &mut Self::Context) -> Self::Result {
         self.connections.push(msg.connection);
     }
 }
@@ -45,7 +45,7 @@ pub struct Leave {
 impl Handler<Leave> for WsConnectionManager {
     type Result = <Leave as Message>::Result;
 
-    fn handle(&mut self, msg: Leave, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: Leave, _ctx: &mut Self::Context) -> Self::Result {
         self.connections.retain(|conn| *conn != msg.connection);
     }
 }
@@ -108,7 +108,7 @@ pub struct ForwardBlock {
 impl Handler<ForwardBlock> for WsConnection {
     type Result = <ForwardBlock as Message>::Result;
 
-    fn handle(&mut self, msg: ForwardBlock, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _msg: ForwardBlock, ctx: &mut Self::Context) -> Self::Result {
         //TODO: Define schema and send message over Websocket
         ctx.text("forward block");
     }
@@ -123,7 +123,7 @@ pub struct ForwardTransaction {
 impl Handler<ForwardTransaction> for WsConnection {
     type Result = <ForwardTransaction as Message>::Result;
 
-    fn handle(&mut self, msg: ForwardTransaction, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _msg: ForwardTransaction, ctx: &mut Self::Context) -> Self::Result {
         //TODO: Define schema and send message over Websocket
         ctx.text("forward transaction");
     }
